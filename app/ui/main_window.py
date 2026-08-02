@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.history_panel import HistoryPanel
 from app.ui.session_dashboard import SessionDashboard
 
 
@@ -121,7 +122,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("FacePilot — Authorized Liveness Lab")
-        self.resize(1280, 820)
+        self.resize(1320, 840)
 
         self.canvas = PreviewCanvas()
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
@@ -130,6 +131,7 @@ class MainWindow(QMainWindow):
         self.zoom_value = QLabel("100%")
         self.file_label = QLabel("No image loaded")
         self.session_dashboard = SessionDashboard()
+        self.history_panel = HistoryPanel()
 
         self._build_ui()
         self._apply_styles()
@@ -156,16 +158,18 @@ class MainWindow(QMainWindow):
         outer.addLayout(body, 1)
         body.addWidget(self.canvas, 1)
 
-        tabs = QTabWidget()
-        tabs.setFixedWidth(380)
-        tabs.addTab(self._create_manual_controls(), "Manual")
-        tabs.addTab(self.session_dashboard, "Session")
-        body.addWidget(tabs)
+        self.tabs = QTabWidget()
+        self.tabs.setFixedWidth(470)
+        self.tabs.addTab(self._create_manual_controls(), "Manual")
+        self.tabs.addTab(self.session_dashboard, "Session")
+        self.tabs.addTab(self.history_panel, "History")
+        body.addWidget(self.tabs)
 
         status = QStatusBar()
         status.showMessage("Local-only authorized test console ready")
         self.setStatusBar(status)
         self.session_dashboard.session_changed.connect(self._on_session_changed)
+        self.session_dashboard.session_saved.connect(self._on_session_saved)
 
     def _create_manual_controls(self) -> QFrame:
         panel = QFrame()
@@ -238,6 +242,12 @@ class MainWindow(QMainWindow):
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.open_image)
         file_menu.addAction(open_action)
+
+        history_action = QAction("Open session history", self)
+        history_action.setShortcut("Ctrl+H")
+        history_action.triggered.connect(lambda: self.tabs.setCurrentWidget(self.history_panel))
+        file_menu.addAction(history_action)
+
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
@@ -278,13 +288,17 @@ class MainWindow(QMainWindow):
             f"Session {session.id[:8]} — {session.status.value} — {session.classification()}"
         )
 
+    def _on_session_saved(self, session) -> None:
+        self.history_panel.refresh()
+        self.statusBar().showMessage(f"Session {session.id[:8]} saved to local history")
+
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
             QMainWindow, QWidget { background: #0b1713; color: #e8f1ed; font-family: Arial; }
             QLabel#heading { color: #39d98a; font-size: 28px; font-weight: 800; letter-spacing: 2px; }
             QLabel#subheading, QLabel#fileLabel { color: #91aaa0; }
-            QFrame#controlPanel, QFrame#sessionDashboard {
+            QFrame#controlPanel, QFrame#sessionDashboard, QFrame#historyPanel {
                 background: #10231c; border: 1px solid #285142; border-radius: 12px;
             }
             QLabel#panelTitle, QLabel#sectionLabel { color: #bcebd5; font-weight: 700; }
@@ -308,7 +322,7 @@ class MainWindow(QMainWindow):
             QSlider::handle:horizontal { background: #39d98a; width: 16px; margin: -5px 0; border-radius: 8px; }
             QProgressBar { border: 1px solid #285142; border-radius: 6px; text-align: center; background: #0c1b16; }
             QProgressBar::chunk { background: #39d98a; border-radius: 5px; }
-            QListWidget { background: #0c1b16; border: 1px solid #203e33; border-radius: 8px; padding: 6px; }
+            QListWidget, QTextEdit { background: #0c1b16; border: 1px solid #203e33; border-radius: 8px; padding: 6px; }
             QTabWidget::pane { border: 0; }
             QTabBar::tab { background: #10231c; padding: 9px 16px; color: #91aaa0; }
             QTabBar::tab:selected { color: #39d98a; border-bottom: 2px solid #39d98a; }
