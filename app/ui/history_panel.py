@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from PySide6.QtCore import QStandardPaths
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -17,12 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.storage.paths import session_history_root
 from app.storage.session_store import SessionStore
-
-
-def default_history_root() -> Path:
-    base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
-    return Path(base) / "sessions"
 
 
 class HistoryPanel(QFrame):
@@ -31,7 +24,7 @@ class HistoryPanel(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("historyPanel")
-        self.store = SessionStore(default_history_root())
+        self.store = SessionStore(session_history_root())
         self._payloads: list[dict[str, object]] = []
 
         self.list_widget = QListWidget()
@@ -80,8 +73,13 @@ class HistoryPanel(QFrame):
             session_id = str(payload.get("id", "unknown"))[:8]
             status = str(payload.get("status", "unknown"))
             created = str(payload.get("created_at", ""))[:19].replace("T", " ")
-            self.list_widget.addItem(f"{created}  •  {status.upper()}  •  {session_id}")
-        if not self._payloads:
+            classification = str(payload.get("classification", "unclassified"))
+            self.list_widget.addItem(
+                f"{created}  •  {status.upper()}  •  {classification}  •  {session_id}"
+            )
+        if self._payloads:
+            self.list_widget.setCurrentRow(0)
+        else:
             self.details.setPlainText("No saved sessions yet.")
 
     def show_details(self, row: int) -> None:
@@ -94,12 +92,21 @@ class HistoryPanel(QFrame):
             f"Status: {payload.get('status', '')}",
             f"Input: {payload.get('input_name', '')}",
             f"Created: {payload.get('created_at', '')}",
+            f"Started: {payload.get('started_at', '')}",
             f"Ended: {payload.get('ended_at', '')}",
-            f"Anomaly score: {payload.get('risk_score', 0)}",
+            f"Anomaly score: {float(payload.get('risk_score', 0) or 0):.0%}",
             f"Classification: {payload.get('classification', '')}",
             "",
             f"Signals recorded: {len(signals) if isinstance(signals, list) else 0}",
         ]
+        if isinstance(signals, list):
+            for signal in signals:
+                if not isinstance(signal, dict):
+                    continue
+                lines.append(
+                    f"• {signal.get('name', 'signal')}: "
+                    f"{float(signal.get('score', 0) or 0):.0%} — {signal.get('detail', '')}"
+                )
         self.details.setPlainText("\n".join(lines))
 
     def delete_selected(self) -> None:
