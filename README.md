@@ -4,16 +4,23 @@
 
 FacePilot is a local-first desktop research tool for simulating controlled visual conditions and challenge-response movements against systems you own or are explicitly authorized to test.
 
-## Current milestone: Phase 1
+## Current milestone: Phase 4
 
-- Load a portrait image
-- Fit it into a test preview
-- Move the frame up, down, left, and right
-- Zoom in and out
-- Flip horizontally
-- Reset the scene
+FacePilot now includes:
+
+- Dark desktop test console
+- Portrait loading, movement, zoom, flip, and reset controls
 - Persistent `AUTHORIZED TEST SIMULATION` watermark
-- No virtual-camera registration or third-party camera injection
+- First-launch authorization notice
+- Guided test-session lifecycle
+- Challenge queue with head-turn, blink, and expression prompts
+- Pass/fail annotations with response timing
+- Aggregate anomaly score and classification
+- JSON, CSV, and styled HTML report exports
+- Local duplicate-frame, motion, brightness, and sharpness analysis modules
+- Automated tests and cross-platform GitHub Actions
+- Windows, macOS, and Linux packaging workflows
+- No system-wide virtual-camera registration or third-party camera injection
 
 ## Run locally
 
@@ -31,13 +38,16 @@ FacePilot is intended only for controlled, consent-based evaluation. It must not
 
 The project deliberately excludes third-party camera injection, emulator camera replacement, stealth features, ADB automation, browser camera spoofing, and integrations that automate real-world KYC flows.
 
-## Roadmap
+## Eight-phase roadmap
 
-1. Phase 1 — desktop shell and manual preview controls
-2. Phase 2 — local facial landmarks and head-pose measurements
-3. Phase 3 — challenge scripting and session recording
-4. Phase 4 — replay/anomaly analysis
-5. Phase 5 — reports, packaging, tests, and documentation
+1. Desktop shell and manual preview controls — complete
+2. Session, challenge, analysis, and report foundations — complete
+3. Authorization, CI, and packaging infrastructure — complete
+4. Integrated session and challenge dashboard — complete
+5. Live analysis and evidence capture — next
+6. Session history, retention, and in-app report management
+7. Recording, reliability, settings, and interface polish
+8. Release candidate validation and first complete release
 
 ## License
 
