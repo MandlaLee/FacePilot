@@ -21,12 +21,15 @@ from PySide6.QtWidgets import (
 from app.challenges.engine import ChallengeEngine, default_sequence
 from app.core.session import SessionStatus, SignalResult, TestSession
 from app.reports.exporter import ReportExporter
+from app.storage.paths import session_history_root
+from app.storage.session_store import SessionStore
 
 
 class SessionDashboard(QFrame):
     """Run a guided challenge sequence and export its local report."""
 
     session_changed = Signal(object)
+    session_saved = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -34,6 +37,8 @@ class SessionDashboard(QFrame):
         self._session: TestSession | None = None
         self._engine: ChallengeEngine | None = None
         self._elapsed_seconds = 0
+        self._saved_session_ids: set[str] = set()
+        self._store = SessionStore(session_history_root())
 
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
@@ -164,7 +169,9 @@ class SessionDashboard(QFrame):
         )
         row = self._engine.current_index - 1
         marker = "✓" if result.passed else "✕"
-        self.queue.item(row).setText(f"{marker} {result.challenge.instruction}")
+        item = self.queue.item(row)
+        if item is not None:
+            item.setText(f"{marker} {result.challenge.instruction}")
         self._start_current_challenge()
         self.session_changed.emit(self._session)
 
@@ -177,6 +184,7 @@ class SessionDashboard(QFrame):
         self.challenge_label.setText("Session cancelled by operator.")
         self._set_running_controls(False)
         self.export_button.setEnabled(True)
+        self._persist_session()
         self.session_changed.emit(self._session)
 
     def _complete_session(self) -> None:
@@ -192,7 +200,23 @@ class SessionDashboard(QFrame):
         self.progress.setValue(100)
         self._set_running_controls(False)
         self.export_button.setEnabled(True)
+        self._persist_session()
         self.session_changed.emit(self._session)
+
+    def _persist_session(self) -> None:
+        if self._session is None or self._session.id in self._saved_session_ids:
+            return
+        try:
+            self._store.save(self._session.to_dict())
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "History save failed",
+                f"The session finished, but its local history file could not be saved:\n{exc}",
+            )
+            return
+        self._saved_session_ids.add(self._session.id)
+        self.session_saved.emit(self._session)
 
     def export_reports(self) -> None:
         if self._session is None or self._session.status is SessionStatus.RUNNING:
