@@ -1,11 +1,11 @@
-"""Main FacePilot window and Phase 1 preview controls."""
+"""Main FacePilot window with preview and authorized test dashboard."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRectF, Qt
-from PySide6.QtGui import QAction, QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import QAction, QColor, QFont, QImage, QPainter, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -17,9 +17,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QStatusBar,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
+
+from app.ui.session_dashboard import SessionDashboard
 
 
 class PreviewCanvas(QWidget):
@@ -31,7 +34,6 @@ class PreviewCanvas(QWidget):
         super().__init__(parent)
         self.setMinimumSize(640, 420)
         self.setObjectName("previewCanvas")
-
         self._image = QImage()
         self._zoom = 1.0
         self._offset = QPoint(0, 0)
@@ -67,12 +69,11 @@ class PreviewCanvas(QWidget):
         self._flipped = False
         self.update()
 
-    def paintEvent(self, event) -> None:  # noqa: N802 - Qt API
+    def paintEvent(self, event) -> None:  # noqa: N802
         del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.fillRect(self.rect(), QColor("#07130f"))
-
         frame = self.rect().adjusted(18, 18, -18, -18)
         painter.setPen(QPen(QColor("#23443a"), 2))
         painter.drawRoundedRect(QRectF(frame), 12, 12)
@@ -80,13 +81,9 @@ class PreviewCanvas(QWidget):
         if self.has_image:
             pixmap = QPixmap.fromImage(self._image)
             if self._flipped:
-                pixmap = pixmap.transformed(
-                    __import__("PySide6.QtGui", fromlist=["QTransform"]).QTransform().scale(-1, 1)
-                )
-
-            available = frame.size()
+                pixmap = pixmap.transformed(QTransform().scale(-1, 1))
             fitted = pixmap.scaled(
-                available,
+                frame.size(),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -107,25 +104,24 @@ class PreviewCanvas(QWidget):
             painter.setFont(QFont("Arial", 16, QFont.Weight.DemiBold))
             painter.drawText(frame, Qt.AlignmentFlag.AlignCenter, "Load a portrait to begin")
 
-        watermark_rect = frame.adjusted(14, 14, -14, -14)
         painter.setPen(QColor(255, 255, 255, 175))
         painter.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         painter.drawText(
-            watermark_rect,
+            frame.adjusted(14, 14, -14, -14),
             Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
             self.WATERMARK,
         )
 
 
 class MainWindow(QMainWindow):
-    """FacePilot Phase 1 application shell."""
+    """FacePilot desktop application shell."""
 
     MOVE_STEP = 20
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("FacePilot — Authorized Liveness Lab")
-        self.resize(1180, 760)
+        self.resize(1280, 820)
 
         self.canvas = PreviewCanvas()
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
@@ -133,6 +129,7 @@ class MainWindow(QMainWindow):
         self.zoom_slider.setValue(100)
         self.zoom_value = QLabel("100%")
         self.file_label = QLabel("No image loaded")
+        self.session_dashboard = SessionDashboard()
 
         self._build_ui()
         self._apply_styles()
@@ -157,19 +154,22 @@ class MainWindow(QMainWindow):
         body = QHBoxLayout()
         body.setSpacing(16)
         outer.addLayout(body, 1)
-
         body.addWidget(self.canvas, 1)
-        controls = self._create_controls()
-        body.addWidget(controls)
+
+        tabs = QTabWidget()
+        tabs.setFixedWidth(380)
+        tabs.addTab(self._create_manual_controls(), "Manual")
+        tabs.addTab(self.session_dashboard, "Session")
+        body.addWidget(tabs)
 
         status = QStatusBar()
-        status.showMessage("Local-only Phase 1 preview ready")
+        status.showMessage("Local-only authorized test console ready")
         self.setStatusBar(status)
+        self.session_dashboard.session_changed.connect(self._on_session_changed)
 
-    def _create_controls(self) -> QFrame:
+    def _create_manual_controls(self) -> QFrame:
         panel = QFrame()
         panel.setObjectName("controlPanel")
-        panel.setFixedWidth(320)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
@@ -185,31 +185,28 @@ class MainWindow(QMainWindow):
         self.file_label.setObjectName("fileLabel")
         layout.addWidget(self.file_label)
 
-        movement_label = QLabel("Frame movement")
-        movement_label.setObjectName("sectionLabel")
-        layout.addWidget(movement_label)
-
+        layout.addWidget(self._section_label("Frame movement"))
         movement = QGridLayout()
-        up = QPushButton("↑")
-        left = QPushButton("←")
-        reset = QPushButton("Reset")
-        right = QPushButton("→")
-        down = QPushButton("↓")
-        up.clicked.connect(lambda: self.canvas.move_image(0, -self.MOVE_STEP))
-        down.clicked.connect(lambda: self.canvas.move_image(0, self.MOVE_STEP))
-        left.clicked.connect(lambda: self.canvas.move_image(-self.MOVE_STEP, 0))
-        right.clicked.connect(lambda: self.canvas.move_image(self.MOVE_STEP, 0))
-        reset.clicked.connect(self.reset_scene)
-        movement.addWidget(up, 0, 1)
-        movement.addWidget(left, 1, 0)
-        movement.addWidget(reset, 1, 1)
-        movement.addWidget(right, 1, 2)
-        movement.addWidget(down, 2, 1)
+        buttons = {
+            "up": QPushButton("↑"),
+            "left": QPushButton("←"),
+            "reset": QPushButton("Reset"),
+            "right": QPushButton("→"),
+            "down": QPushButton("↓"),
+        }
+        buttons["up"].clicked.connect(lambda: self.canvas.move_image(0, -self.MOVE_STEP))
+        buttons["down"].clicked.connect(lambda: self.canvas.move_image(0, self.MOVE_STEP))
+        buttons["left"].clicked.connect(lambda: self.canvas.move_image(-self.MOVE_STEP, 0))
+        buttons["right"].clicked.connect(lambda: self.canvas.move_image(self.MOVE_STEP, 0))
+        buttons["reset"].clicked.connect(self.reset_scene)
+        movement.addWidget(buttons["up"], 0, 1)
+        movement.addWidget(buttons["left"], 1, 0)
+        movement.addWidget(buttons["reset"], 1, 1)
+        movement.addWidget(buttons["right"], 1, 2)
+        movement.addWidget(buttons["down"], 2, 1)
         layout.addLayout(movement)
 
-        zoom_label = QLabel("Zoom")
-        zoom_label.setObjectName("sectionLabel")
-        layout.addWidget(zoom_label)
+        layout.addWidget(self._section_label("Zoom"))
         zoom_row = QHBoxLayout()
         zoom_row.addWidget(self.zoom_slider, 1)
         zoom_row.addWidget(self.zoom_value)
@@ -221,7 +218,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(flip_button)
 
         notice = QLabel(
-            "Test output stays inside FacePilot. No virtual camera or third-party injection is enabled."
+            "Test output stays inside FacePilot. No system-wide virtual camera or third-party injection is enabled."
         )
         notice.setWordWrap(True)
         notice.setObjectName("notice")
@@ -229,13 +226,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(notice)
         return panel
 
+    @staticmethod
+    def _section_label(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("sectionLabel")
+        return label
+
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
         open_action = QAction("Open portrait…", self)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.open_image)
         file_menu.addAction(open_action)
-
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
@@ -253,9 +255,11 @@ class MainWindow(QMainWindow):
         if not self.canvas.load_image(path):
             QMessageBox.critical(self, "Unable to load image", "The selected image could not be read.")
             return
-        self.file_label.setText(Path(path).name)
+        filename = Path(path).name
+        self.file_label.setText(filename)
+        self.session_dashboard.setProperty("input_name", filename)
         self.zoom_slider.setValue(100)
-        self.statusBar().showMessage(f"Loaded {Path(path).name}")
+        self.statusBar().showMessage(f"Loaded {filename}")
 
     def reset_scene(self) -> None:
         self.canvas.reset_view()
@@ -269,68 +273,45 @@ class MainWindow(QMainWindow):
         self.canvas.set_zoom(value / 100)
         self.zoom_value.setText(f"{value}%")
 
+    def _on_session_changed(self, session) -> None:
+        self.statusBar().showMessage(
+            f"Session {session.id[:8]} — {session.status.value} — {session.classification()}"
+        )
+
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow, QWidget {
-                background: #0b1713;
-                color: #e8f1ed;
-                font-family: Arial;
+            QMainWindow, QWidget { background: #0b1713; color: #e8f1ed; font-family: Arial; }
+            QLabel#heading { color: #39d98a; font-size: 28px; font-weight: 800; letter-spacing: 2px; }
+            QLabel#subheading, QLabel#fileLabel { color: #91aaa0; }
+            QFrame#controlPanel, QFrame#sessionDashboard {
+                background: #10231c; border: 1px solid #285142; border-radius: 12px;
             }
-            QLabel#heading {
-                color: #39d98a;
-                font-size: 28px;
-                font-weight: 800;
-                letter-spacing: 2px;
-            }
-            QLabel#subheading, QLabel#fileLabel {
-                color: #91aaa0;
-            }
-            QFrame#controlPanel {
-                background: #10231c;
-                border: 1px solid #285142;
-                border-radius: 12px;
-            }
-            QLabel#panelTitle, QLabel#sectionLabel {
-                color: #bcebd5;
-                font-weight: 700;
+            QLabel#panelTitle, QLabel#sectionLabel { color: #bcebd5; font-weight: 700; }
+            QLabel#sessionStatus { color: #39d98a; font-weight: 800; }
+            QLabel#activeChallenge {
+                color: #ffffff; background: #0c1b16; border: 1px solid #2b684f;
+                border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 700;
             }
             QLabel#notice {
-                color: #7f9b90;
-                background: #0c1b16;
-                border: 1px solid #203e33;
-                border-radius: 8px;
-                padding: 10px;
+                color: #7f9b90; background: #0c1b16; border: 1px solid #203e33;
+                border-radius: 8px; padding: 10px;
             }
             QPushButton {
-                background: #17382c;
-                color: #e9fff5;
-                border: 1px solid #2b684f;
-                border-radius: 7px;
-                padding: 10px;
-                font-weight: 700;
+                background: #17382c; color: #e9fff5; border: 1px solid #2b684f;
+                border-radius: 7px; padding: 10px; font-weight: 700;
             }
-            QPushButton:hover {
-                background: #1f4c3b;
-                border-color: #39d98a;
-            }
-            QPushButton:pressed {
-                background: #102b21;
-            }
-            QSlider::groove:horizontal {
-                height: 6px;
-                background: #23443a;
-                border-radius: 3px;
-            }
-            QSlider::handle:horizontal {
-                background: #39d98a;
-                width: 16px;
-                margin: -5px 0;
-                border-radius: 8px;
-            }
-            QMenuBar, QMenu, QStatusBar {
-                background: #0d1d18;
-                color: #dce9e3;
-            }
+            QPushButton:hover { background: #1f4c3b; border-color: #39d98a; }
+            QPushButton:pressed { background: #102b21; }
+            QPushButton:disabled { color: #60776e; border-color: #203e33; background: #10201a; }
+            QSlider::groove:horizontal { height: 6px; background: #23443a; border-radius: 3px; }
+            QSlider::handle:horizontal { background: #39d98a; width: 16px; margin: -5px 0; border-radius: 8px; }
+            QProgressBar { border: 1px solid #285142; border-radius: 6px; text-align: center; background: #0c1b16; }
+            QProgressBar::chunk { background: #39d98a; border-radius: 5px; }
+            QListWidget { background: #0c1b16; border: 1px solid #203e33; border-radius: 8px; padding: 6px; }
+            QTabWidget::pane { border: 0; }
+            QTabBar::tab { background: #10231c; padding: 9px 16px; color: #91aaa0; }
+            QTabBar::tab:selected { color: #39d98a; border-bottom: 2px solid #39d98a; }
+            QMenuBar, QMenu, QStatusBar { background: #0d1d18; color: #dce9e3; }
             """
         )
