@@ -28,6 +28,10 @@ class FrameAnalyzer:
             raise ValueError("history_size must be at least 2")
         self._history: deque[np.ndarray] = deque(maxlen=history_size)
 
+    def reset(self) -> None:
+        """Clear prior frames so a new test session starts with fresh state."""
+        self._history.clear()
+
     @staticmethod
     def _gray(frame: np.ndarray) -> np.ndarray:
         if frame.ndim == 2:
@@ -73,6 +77,8 @@ class FrameAnalyzer:
         )
 
     def repeated_frame_ratio(self, threshold: float = 0.98) -> float:
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError("threshold must be between 0 and 1")
         if len(self._history) < 2:
             return 0.0
         pairs = list(zip(list(self._history)[:-1], list(self._history)[1:]))
