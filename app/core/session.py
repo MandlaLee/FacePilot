@@ -65,10 +65,37 @@ class TestSession:
         self.notes.append(reason)
         self.ended_at = datetime.now(UTC).isoformat()
 
-    def risk_score(self) -> float:
-        if not self.signals:
+    def _risk_signals(self) -> list[SignalResult]:
+        """Return signals intended to contribute to the anomaly score."""
+        return [
+            signal
+            for signal in self.signals
+            if signal.name.startswith("challenge:") or signal.name == "frame:duplicate"
+        ]
+
+    @staticmethod
+    def _average(signals: list[SignalResult]) -> float:
+        if not signals:
             return 0.0
-        return sum(item.score for item in self.signals) / len(self.signals)
+        return sum(item.score for item in signals) / len(signals)
+
+    def risk_score(self) -> float:
+        """Calculate anomaly score from outcome and frame-continuity signals only."""
+        return self._average(self._risk_signals())
+
+    def risk_breakdown(self) -> dict[str, float]:
+        """Return transparent category averages for the session summary."""
+        challenge_signals = [
+            signal for signal in self.signals if signal.name.startswith("challenge:")
+        ]
+        frame_signals = [
+            signal for signal in self.signals if signal.name == "frame:duplicate"
+        ]
+        return {
+            "challenge_outcomes": round(self._average(challenge_signals), 4),
+            "frame_continuity": round(self._average(frame_signals), 4),
+            "overall": round(self.risk_score(), 4),
+        }
 
     def classification(self) -> str:
         score = self.risk_score()
@@ -82,5 +109,6 @@ class TestSession:
         payload = asdict(self)
         payload["status"] = self.status.value
         payload["risk_score"] = round(self.risk_score(), 4)
+        payload["risk_breakdown"] = self.risk_breakdown()
         payload["classification"] = self.classification()
         return payload
