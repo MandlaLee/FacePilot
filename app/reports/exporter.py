@@ -40,6 +40,7 @@ class ReportExporter:
 
     def html_report(self, session: TestSession) -> Path:
         payload = session.to_dict()
+        breakdown = payload["risk_breakdown"]
         rows = "".join(
             "<tr>"
             f"<td>{html.escape(signal.name)}</td>"
@@ -57,8 +58,12 @@ class ReportExporter:
 <style>
 body{{font-family:Arial,sans-serif;max-width:960px;margin:40px auto;padding:0 20px;color:#15231d}}
 h1{{color:#087748}} .badge{{display:inline-block;padding:6px 10px;background:#e8f7ef;border-radius:999px}}
+.grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}}
+.card{{border:1px solid #cad8d1;border-radius:10px;padding:14px}}
+.value{{font-size:1.4rem;font-weight:700}}
 table{{width:100%;border-collapse:collapse;margin-top:24px}}th,td{{border:1px solid #cad8d1;padding:10px;text-align:left}}
 .notice{{margin-top:28px;padding:14px;background:#f1f6f3;border-left:4px solid #087748}}
+@media(max-width:700px){{.grid{{grid-template-columns:1fr}}}}
 </style>
 </head>
 <body>
@@ -67,9 +72,13 @@ table{{width:100%;border-collapse:collapse;margin-top:24px}}th,td{{border:1px so
 <p><strong>Input:</strong> {html.escape(session.input_name)}</p>
 <p><strong>Status:</strong> {html.escape(session.status.value)}</p>
 <p><strong>Assessment:</strong> <span class="badge">{html.escape(str(payload['classification']))}</span></p>
-<p><strong>Aggregate anomaly score:</strong> {float(payload['risk_score']):.1%}</p>
+<div class="grid">
+<div class="card"><div>Overall anomaly</div><div class="value">{float(breakdown['overall']):.1%}</div></div>
+<div class="card"><div>Challenge outcomes</div><div class="value">{float(breakdown['challenge_outcomes']):.1%}</div></div>
+<div class="card"><div>Frame analysis</div><div class="value">{float(breakdown['frame_analysis']):.1%}</div></div>
+</div>
 <table><thead><tr><th>Signal</th><th>Score</th><th>Detail</th></tr></thead><tbody>{rows}</tbody></table>
-<div class="notice">Generated locally for systems owned by, or explicitly authorized for testing by, the operator. This report is not a biometric identity decision.</div>
+<div class="notice">Generated locally for systems owned by, or explicitly authorized for testing by, the operator. Frame and motion checks are transparent heuristics, not biometric identity or liveness guarantees.</div>
 </body></html>"""
         path = self.output_dir / f"facepilot-{session.id}.html"
         path.write_text(document, encoding="utf-8")
