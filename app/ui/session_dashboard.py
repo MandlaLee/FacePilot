@@ -25,6 +25,7 @@ from app.challenges.engine import ChallengeEngine, default_sequence
 from app.detection.frame_analyzer import FrameAnalyzer
 from app.core.session import SessionStatus, SignalResult, TestSession
 from app.reports.exporter import ReportExporter
+from app.storage.evidence import EvidenceStore
 from app.storage.paths import session_history_root
 from app.storage.session_store import SessionStore
 
@@ -43,6 +44,8 @@ class SessionDashboard(QFrame):
         self._elapsed_seconds = 0
         self._saved_session_ids: set[str] = set()
         self._store = SessionStore(session_history_root())
+        self._evidence_store = EvidenceStore(session_history_root() / "evidence")
+        self._evidence_sequence = 0
         self._frame_provider: Callable[[], np.ndarray | None] | None = None
         self._input_ready = False
         self._analyzer = FrameAnalyzer()
@@ -146,6 +149,7 @@ class SessionDashboard(QFrame):
             return
         input_name = self.property("input_name") or "local-test-input"
         self._analyzer.reset()
+        self._evidence_sequence = 0
         self._session = TestSession(input_name=str(input_name))
         self._session.start()
         self._engine = ChallengeEngine(default_sequence())
@@ -195,7 +199,8 @@ class SessionDashboard(QFrame):
                     f"{result.response_seconds:.2f}s; confidence {result.confidence:.0%}"
                 ),
             )
-        )        if self._frame_provider is not None:
+        )
+        if self._frame_provider is not None:
             frame = self._frame_provider()
             if frame is not None:
                 metrics = self._analyzer.analyze(frame)
@@ -211,6 +216,19 @@ class SessionDashboard(QFrame):
                         ),
                     )
                 )
+                self._evidence_sequence += 1
+                try:
+                    evidence_path = self._evidence_store.save_frame(
+                        self._session.id,
+                        self._evidence_sequence,
+                        frame,
+                    )
+                except (OSError, ValueError) as exc:
+                    self._session.notes.append(f"Evidence capture failed: {exc}")
+                else:
+                    self._session.notes.append(
+                        f"Evidence frame {self._evidence_sequence}: {evidence_path}"
+                    )
         row = self._engine.current_index - 1
         marker = "✓" if result.passed else "✕"
         item = self.queue.item(row)
