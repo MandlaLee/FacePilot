@@ -70,7 +70,8 @@ class TestSession:
         return [
             signal
             for signal in self.signals
-            if signal.name.startswith("challenge:") or signal.name == "frame:duplicate"
+            if signal.name.startswith("challenge:")
+            or signal.name in {"frame:duplicate", "frame:challenge_motion"}
         ]
 
     @staticmethod
@@ -80,7 +81,7 @@ class TestSession:
         return sum(item.score for item in signals) / len(signals)
 
     def risk_score(self) -> float:
-        """Calculate anomaly score from outcome and frame-continuity signals only."""
+        """Calculate anomaly score from outcome and automated frame heuristics."""
         return self._average(self._risk_signals())
 
     def risk_breakdown(self) -> dict[str, float]:
@@ -89,11 +90,13 @@ class TestSession:
             signal for signal in self.signals if signal.name.startswith("challenge:")
         ]
         frame_signals = [
-            signal for signal in self.signals if signal.name == "frame:duplicate"
+            signal
+            for signal in self.signals
+            if signal.name in {"frame:duplicate", "frame:challenge_motion"}
         ]
         return {
             "challenge_outcomes": round(self._average(challenge_signals), 4),
-            "frame_continuity": round(self._average(frame_signals), 4),
+            "frame_analysis": round(self._average(frame_signals), 4),
             "overall": round(self.risk_score(), 4),
         }
 
