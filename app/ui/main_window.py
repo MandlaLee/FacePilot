@@ -55,27 +55,41 @@ class PreviewCanvas(QWidget):
         return True
 
     def analysis_frame(self, size: int = 320) -> np.ndarray | None:
-        """Return the currently rendered image as an RGB NumPy frame.
-
-        This is the local preview only; it does not expose or register a system
-        camera and is used solely by FacePilot's local analysis pipeline.
-        """
+        """Render the current local preview state as an RGB NumPy frame."""
         if not self.has_image:
             return None
+
         pixmap = QPixmap.fromImage(self._image)
         if self._flipped:
             pixmap = pixmap.transformed(QTransform().scale(-1, 1))
-        target = pixmap.scaled(
+
+        canvas = QImage(size, size, QImage.Format.Format_RGB888)
+        canvas.fill(QColor("#000000"))
+        frame = QRectF(0, 0, size, size)
+        fitted = pixmap.scaled(
             size,
             size,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        image = target.toImage().convertToFormat(QImage.Format.Format_RGB888)
-        width, height = image.width(), image.height()
-        bits = image.constBits()
-        frame = np.frombuffer(bits, dtype=np.uint8, count=width * height * 3)
-        return frame.reshape((height, width, 3)).copy()
+        target_size = fitted.size()
+        target_size.setWidth(max(1, round(target_size.width() * self._zoom)))
+        target_size.setHeight(max(1, round(target_size.height() * self._zoom)))
+        scaled = pixmap.scaled(
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        painter = QPainter(canvas)
+        x = int(frame.center().x() - scaled.width() / 2 + self._offset.x())
+        y = int(frame.center().y() - scaled.height() / 2 + self._offset.y())
+        painter.drawPixmap(x, y, scaled)
+        painter.end()
+
+        bits = canvas.constBits()
+        array = np.frombuffer(bits, dtype=np.uint8, count=size * size * 3)
+        return array.reshape((size, size, 3)).copy()
 
     def set_zoom(self, value: float) -> None:
         self._zoom = max(0.25, min(value, 4.0))
