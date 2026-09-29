@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.storage.evidence import EvidenceStore
 from app.storage.paths import session_history_root
 from app.storage.session_store import SessionStore
 
@@ -25,6 +26,7 @@ class HistoryPanel(QFrame):
         super().__init__(parent)
         self.setObjectName("historyPanel")
         self.store = SessionStore(session_history_root())
+        self.evidence_store = EvidenceStore(session_history_root() / "evidence")
         self._payloads: list[dict[str, object]] = []
 
         self.list_widget = QListWidget()
@@ -121,6 +123,7 @@ class HistoryPanel(QFrame):
         )
         if answer == QMessageBox.StandardButton.Yes:
             self.store.delete(session_id)
+            self.evidence_store.delete_session(session_id)
             self.refresh()
 
     def purge_old(self) -> None:
