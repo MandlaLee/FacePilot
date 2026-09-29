@@ -105,7 +105,7 @@ class HistoryPanel(QFrame):
             lines.extend(
                 [
                     f"Challenge outcomes: {float(breakdown.get('challenge_outcomes', 0) or 0):.0%}",
-                    f"Frame continuity: {float(breakdown.get('frame_continuity', 0) or 0):.0%}",
+                    f"Frame analysis: {float(breakdown.get('frame_analysis', 0) or 0):.0%}",
                 ]
             )
         lines.extend(
@@ -143,6 +143,11 @@ class HistoryPanel(QFrame):
                     lines.append(
                         f"     {timestamp}  Frame continuity  "
                         f"{float(signal.get('score', 0) or 0):.0%} duplicate score"
+                    )
+                elif name == "frame:challenge_motion":
+                    lines.append(
+                        f"     {timestamp}  Challenge motion  "
+                        f"{float(signal.get('score', 0) or 0):.0%} concern"
                     )
                 elif name == "frame:quality":
                     lines.append(
