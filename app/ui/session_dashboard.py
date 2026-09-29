@@ -91,6 +91,8 @@ class SessionDashboard(QFrame):
     def set_input_ready(self, ready: bool) -> None:
         """Enable sessions only after a valid local test input has been loaded."""
         self._input_ready = ready
+        if ready and self._session is not None and self._session.status is not SessionStatus.RUNNING:
+            self._session = None
         self._update_start_state()
 
     def _update_start_state(self) -> None:
