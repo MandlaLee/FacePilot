@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.challenges.engine import ChallengeEngine, default_sequence
+from app.challenges.engine import ChallengeEngine, ChallengeKind, default_sequence
 from app.detection.frame_analyzer import FrameAnalyzer
 from app.core.session import SessionStatus, SignalResult, TestSession
 from app.reports.exporter import ReportExporter
@@ -134,7 +134,8 @@ class SessionDashboard(QFrame):
 
         notice = QLabel(
             "Automated checks currently measure frame continuity and image quality. "
-            "They do not verify facial landmarks or prove liveness."
+            "Movement challenges also receive a simple motion heuristic. "
+            "These checks do not verify facial landmarks or prove liveness."
         )
         notice.setWordWrap(True)
         notice.setObjectName("notice")
@@ -216,6 +217,31 @@ class SessionDashboard(QFrame):
                     )
                 )
 
+                movement_challenges = {
+                    ChallengeKind.LOOK_LEFT,
+                    ChallengeKind.LOOK_RIGHT,
+                    ChallengeKind.LOOK_UP,
+                    ChallengeKind.LOOK_DOWN,
+                    ChallengeKind.MOVE_CLOSER,
+                    ChallengeKind.MOVE_AWAY,
+                }
+                if result.challenge.kind in movement_challenges:
+                    motion_concern = 1.0 - metrics.motion_score
+                    self._session.add_signal(
+                        SignalResult(
+                            name="frame:challenge_motion",
+                            score=motion_concern,
+                            detail=(
+                                f"Movement-challenge heuristic: {metrics.motion_score:.0%} "
+                                f"motion observed; {motion_concern:.0%} concern"
+                            ),
+                        )
+                    )
+                else:
+                    self._session.notes.append(
+                        f"{result.challenge.kind.value}: automated landmark verification not available"
+                    )
+
                 brightness_issue = abs(metrics.brightness - 0.5) * 2.0
                 quality_issue = max(
                     0.0,
@@ -279,7 +305,7 @@ class SessionDashboard(QFrame):
             f"Sequence complete — {self._session.classification()} "
             f"({self._session.risk_score():.0%} anomaly score). "
             f"Challenges {breakdown['challenge_outcomes']:.0%} • "
-            f"Frame continuity {breakdown['frame_continuity']:.0%}"
+            f"Frame analysis {breakdown['frame_analysis']:.0%}"
         )
         self.progress.setValue(100)
         self._set_running_controls(False)
