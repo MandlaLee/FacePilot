@@ -133,8 +133,8 @@ class SessionDashboard(QFrame):
         layout.addWidget(self.export_button)
 
         notice = QLabel(
-            "Operator decisions are recorded as test annotations. Automated landmark verification "
-            "will be added separately and must only be connected to authorized systems."
+            "Automated checks currently measure frame continuity and image quality. "
+            "They do not verify facial landmarks or prove liveness."
         )
         notice.setWordWrap(True)
         notice.setObjectName("notice")
@@ -200,6 +200,7 @@ class SessionDashboard(QFrame):
                 ),
             )
         )
+
         if self._frame_provider is not None:
             frame = self._frame_provider()
             if frame is not None:
@@ -209,13 +210,29 @@ class SessionDashboard(QFrame):
                         name="frame:duplicate",
                         score=metrics.duplicate_score,
                         detail=(
-                            f"Duplicate-frame heuristic {metrics.duplicate_score:.0%}; "
-                            f"motion {metrics.motion_score:.0%}; "
+                            f"Frame continuity heuristic: {metrics.duplicate_score:.0%} duplicate; "
+                            f"motion {metrics.motion_score:.0%}"
+                        ),
+                    )
+                )
+
+                brightness_issue = abs(metrics.brightness - 0.5) * 2.0
+                quality_issue = max(
+                    0.0,
+                    min((brightness_issue + (1.0 - metrics.sharpness)) / 2.0, 1.0),
+                )
+                self._session.add_signal(
+                    SignalResult(
+                        name="frame:quality",
+                        score=quality_issue,
+                        detail=(
+                            f"Quality concern {quality_issue:.0%}; "
                             f"brightness {metrics.brightness:.0%}; "
                             f"sharpness {metrics.sharpness:.0%}"
                         ),
                     )
                 )
+
                 self._evidence_sequence += 1
                 try:
                     evidence_path = self._evidence_store.save_frame(
@@ -229,6 +246,7 @@ class SessionDashboard(QFrame):
                     self._session.notes.append(
                         f"Evidence frame {self._evidence_sequence}: {evidence_path}"
                     )
+
         row = self._engine.current_index - 1
         marker = "✓" if result.passed else "✕"
         item = self.queue.item(row)
@@ -255,10 +273,13 @@ class SessionDashboard(QFrame):
             return
         self._session.complete()
         self._timer.stop()
+        breakdown = self._session.risk_breakdown()
         self.status_label.setText("COMPLETED")
         self.challenge_label.setText(
             f"Sequence complete — {self._session.classification()} "
-            f"({self._session.risk_score():.0%} anomaly score)."
+            f"({self._session.risk_score():.0%} anomaly score). "
+            f"Challenges {breakdown['challenge_outcomes']:.0%} • "
+            f"Frame continuity {breakdown['frame_continuity']:.0%}"
         )
         self.progress.setValue(100)
         self._set_running_controls(False)
@@ -276,7 +297,8 @@ class SessionDashboard(QFrame):
             QMessageBox.warning(
                 self,
                 "History save failed",
-                f"The session finished, but its local history file could not be saved:\n{exc}",
+                f"The session finished, but its local history file could not be saved:
+{exc}",
             )
             return
         self._saved_session_ids.add(self._session.id)
