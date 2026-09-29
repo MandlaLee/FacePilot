@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from PySide6.QtCore import QPoint, QRectF, Qt
 from PySide6.QtGui import QAction, QColor, QFont, QImage, QPainter, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import (
@@ -52,6 +54,29 @@ class PreviewCanvas(QWidget):
         self.reset_view()
         return True
 
+    def analysis_frame(self, size: int = 320) -> np.ndarray | None:
+        """Return the currently rendered image as an RGB NumPy frame.
+
+        This is the local preview only; it does not expose or register a system
+        camera and is used solely by FacePilot's local analysis pipeline.
+        """
+        if not self.has_image:
+            return None
+        pixmap = QPixmap.fromImage(self._image)
+        if self._flipped:
+            pixmap = pixmap.transformed(QTransform().scale(-1, 1))
+        target = pixmap.scaled(
+            size,
+            size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        image = target.toImage().convertToFormat(QImage.Format.Format_RGB888)
+        width, height = image.width(), image.height()
+        bits = image.constBits()
+        frame = np.frombuffer(bits, dtype=np.uint8, count=width * height * 3)
+        return frame.reshape((height, width, 3)).copy()
+
     def set_zoom(self, value: float) -> None:
         self._zoom = max(0.25, min(value, 4.0))
         self.update()
@@ -88,7 +113,9 @@ class PreviewCanvas(QWidget):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            target_size = fitted.size() * self._zoom
+            target_size = fitted.size()
+            target_size.setWidth(max(1, round(target_size.width() * self._zoom)))
+            target_size.setHeight(max(1, round(target_size.height() * self._zoom)))
             scaled = pixmap.scaled(
                 target_size,
                 Qt.AspectRatioMode.KeepAspectRatio,
@@ -131,6 +158,7 @@ class MainWindow(QMainWindow):
         self.zoom_value = QLabel("100%")
         self.file_label = QLabel("No image loaded")
         self.session_dashboard = SessionDashboard()
+        self.session_dashboard.set_frame_provider(self.canvas.analysis_frame)
         self.history_panel = HistoryPanel()
 
         self._build_ui()
@@ -268,6 +296,7 @@ class MainWindow(QMainWindow):
         filename = Path(path).name
         self.file_label.setText(filename)
         self.session_dashboard.setProperty("input_name", filename)
+        self.session_dashboard.set_input_ready(True)
         self.zoom_slider.setValue(100)
         self.statusBar().showMessage(f"Loaded {filename}")
 
