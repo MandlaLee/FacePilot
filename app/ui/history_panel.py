@@ -89,6 +89,7 @@ class HistoryPanel(QFrame):
             return
         payload = self._payloads[row]
         signals = payload.get("signals", [])
+        breakdown = payload.get("risk_breakdown", {})
         lines = [
             f"Session: {payload.get('id', '')}",
             f"Status: {payload.get('status', '')}",
@@ -96,11 +97,24 @@ class HistoryPanel(QFrame):
             f"Created: {payload.get('created_at', '')}",
             f"Started: {payload.get('started_at', '')}",
             f"Ended: {payload.get('ended_at', '')}",
-            f"Anomaly score: {float(payload.get('risk_score', 0) or 0):.0%}",
-            f"Classification: {payload.get('classification', '')}",
             "",
-            f"Signals recorded: {len(signals) if isinstance(signals, list) else 0}",
+            "RISK BREAKDOWN",
+            f"Overall: {float(payload.get('risk_score', 0) or 0):.0%}",
         ]
+        if isinstance(breakdown, dict):
+            lines.extend(
+                [
+                    f"Challenge outcomes: {float(breakdown.get('challenge_outcomes', 0) or 0):.0%}",
+                    f"Frame continuity: {float(breakdown.get('frame_continuity', 0) or 0):.0%}",
+                ]
+            )
+        lines.extend(
+            [
+                f"Classification: {payload.get('classification', '')}",
+                "",
+                f"Signals recorded: {len(signals) if isinstance(signals, list) else 0}",
+            ]
+        )
         if isinstance(signals, list):
             for signal in signals:
                 if not isinstance(signal, dict):
@@ -127,8 +141,13 @@ class HistoryPanel(QFrame):
                     )
                 elif name == "frame:duplicate":
                     lines.append(
-                        f"     {timestamp}  Frame analysis  "
+                        f"     {timestamp}  Frame continuity  "
                         f"{float(signal.get('score', 0) or 0):.0%} duplicate score"
+                    )
+                elif name == "frame:quality":
+                    lines.append(
+                        f"     {timestamp}  Frame quality  "
+                        f"{float(signal.get('score', 0) or 0):.0%} concern"
                     )
         self.details.setPlainText("\n".join(lines))
 
