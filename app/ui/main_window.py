@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from PySide6.QtCore import QPoint, QRectF, Qt
 from PySide6.QtGui import QAction, QColor, QFont, QImage, QPainter, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import (
@@ -52,6 +54,43 @@ class PreviewCanvas(QWidget):
         self.reset_view()
         return True
 
+    def analysis_frame(self, size: int = 320) -> np.ndarray | None:
+        """Render the current local preview state as an RGB NumPy frame."""
+        if not self.has_image:
+            return None
+
+        pixmap = QPixmap.fromImage(self._image)
+        if self._flipped:
+            pixmap = pixmap.transformed(QTransform().scale(-1, 1))
+
+        canvas = QImage(size, size, QImage.Format.Format_RGB888)
+        canvas.fill(QColor("#000000"))
+        frame = QRectF(0, 0, size, size)
+        fitted = pixmap.scaled(
+            size,
+            size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        target_size = fitted.size()
+        target_size.setWidth(max(1, round(target_size.width() * self._zoom)))
+        target_size.setHeight(max(1, round(target_size.height() * self._zoom)))
+        scaled = pixmap.scaled(
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        painter = QPainter(canvas)
+        x = int(frame.center().x() - scaled.width() / 2 + self._offset.x())
+        y = int(frame.center().y() - scaled.height() / 2 + self._offset.y())
+        painter.drawPixmap(x, y, scaled)
+        painter.end()
+
+        bits = canvas.constBits()
+        array = np.frombuffer(bits, dtype=np.uint8, count=size * size * 3)
+        return array.reshape((size, size, 3)).copy()
+
     def set_zoom(self, value: float) -> None:
         self._zoom = max(0.25, min(value, 4.0))
         self.update()
@@ -88,7 +127,9 @@ class PreviewCanvas(QWidget):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            target_size = fitted.size() * self._zoom
+            target_size = fitted.size()
+            target_size.setWidth(max(1, round(target_size.width() * self._zoom)))
+            target_size.setHeight(max(1, round(target_size.height() * self._zoom)))
             scaled = pixmap.scaled(
                 target_size,
                 Qt.AspectRatioMode.KeepAspectRatio,
@@ -131,6 +172,7 @@ class MainWindow(QMainWindow):
         self.zoom_value = QLabel("100%")
         self.file_label = QLabel("No image loaded")
         self.session_dashboard = SessionDashboard()
+        self.session_dashboard.set_frame_provider(self.canvas.analysis_frame)
         self.history_panel = HistoryPanel()
 
         self._build_ui()
@@ -268,6 +310,7 @@ class MainWindow(QMainWindow):
         filename = Path(path).name
         self.file_label.setText(filename)
         self.session_dashboard.setProperty("input_name", filename)
+        self.session_dashboard.set_input_ready(True)
         self.zoom_slider.setValue(100)
         self.statusBar().showMessage(f"Loaded {filename}")
 

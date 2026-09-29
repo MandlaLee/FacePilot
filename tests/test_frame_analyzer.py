@@ -18,3 +18,23 @@ def test_changed_frame_has_motion() -> None:
     metrics = analyzer.analyze(np.full((20, 20), 255, dtype=np.uint8))
     assert metrics.motion_score == 1.0
     assert metrics.duplicate_score == 0.0
+
+
+def test_reset_clears_previous_frame() -> None:
+    analyzer = FrameAnalyzer()
+    frame = np.zeros((10, 10), dtype=np.uint8)
+    analyzer.analyze(frame)
+    analyzer.reset()
+    metrics = analyzer.analyze(frame)
+    assert metrics.duplicate_score == 0.0
+    assert metrics.motion_score == 0.0
+
+
+def test_invalid_threshold_is_rejected() -> None:
+    analyzer = FrameAnalyzer()
+    try:
+        analyzer.repeated_frame_ratio(1.1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError for an invalid threshold")

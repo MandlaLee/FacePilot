@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.storage.evidence import EvidenceStore
 from app.storage.paths import session_history_root
 from app.storage.session_store import SessionStore
 
@@ -25,6 +26,7 @@ class HistoryPanel(QFrame):
         super().__init__(parent)
         self.setObjectName("historyPanel")
         self.store = SessionStore(session_history_root())
+        self.evidence_store = EvidenceStore(session_history_root() / "evidence")
         self._payloads: list[dict[str, object]] = []
 
         self.list_widget = QListWidget()
@@ -107,6 +109,27 @@ class HistoryPanel(QFrame):
                     f"• {signal.get('name', 'signal')}: "
                     f"{float(signal.get('score', 0) or 0):.0%} — {signal.get('detail', '')}"
                 )
+        if isinstance(signals, list) and signals:
+            lines.append("")
+            lines.append("CHALLENGE TIMELINE")
+            challenge_number = 0
+            for signal in signals:
+                if not isinstance(signal, dict):
+                    continue
+                name = str(signal.get("name", "signal"))
+                timestamp = str(signal.get("timestamp", ""))[:19].replace("T", " ")
+                if name.startswith("challenge:"):
+                    challenge_number += 1
+                    label = name.removeprefix("challenge:").replace("_", " ").title()
+                    lines.append(
+                        f"{challenge_number:02d}  {timestamp}  {label}  "
+                        f"score {float(signal.get('score', 0) or 0):.0%}"
+                    )
+                elif name == "frame:duplicate":
+                    lines.append(
+                        f"     {timestamp}  Frame analysis  "
+                        f"{float(signal.get('score', 0) or 0):.0%} duplicate score"
+                    )
         self.details.setPlainText("\n".join(lines))
 
     def delete_selected(self) -> None:
@@ -121,6 +144,7 @@ class HistoryPanel(QFrame):
         )
         if answer == QMessageBox.StandardButton.Yes:
             self.store.delete(session_id)
+            self.evidence_store.delete_session(session_id)
             self.refresh()
 
     def purge_old(self) -> None:
