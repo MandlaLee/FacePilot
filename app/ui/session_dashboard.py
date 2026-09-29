@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
+
+import numpy as np
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
@@ -19,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.challenges.engine import ChallengeEngine, default_sequence
+from app.detection.frame_analyzer import FrameAnalyzer
 from app.core.session import SessionStatus, SignalResult, TestSession
 from app.reports.exporter import ReportExporter
 from app.storage.paths import session_history_root
@@ -39,6 +43,9 @@ class SessionDashboard(QFrame):
         self._elapsed_seconds = 0
         self._saved_session_ids: set[str] = set()
         self._store = SessionStore(session_history_root())
+        self._frame_provider: Callable[[], np.ndarray | None] | None = None
+        self._input_ready = False
+        self._analyzer = FrameAnalyzer()
 
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
@@ -71,10 +78,23 @@ class SessionDashboard(QFrame):
         self._build_ui()
         self._set_running_controls(False)
         self.export_button.setEnabled(False)
+        self._update_start_state()
 
     @property
     def session(self) -> TestSession | None:
         return self._session
+
+    def set_frame_provider(self, provider: Callable[[], np.ndarray | None]) -> None:
+        """Set the local preview provider used for frame-level analysis."""
+        self._frame_provider = provider
+
+    def set_input_ready(self, ready: bool) -> None:
+        """Enable sessions only after a valid local test input has been loaded."""
+        self._input_ready = ready
+        self._update_start_state()
+
+    def _update_start_state(self) -> None:
+        self.start_button.setEnabled(self._input_ready and self._session is None)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -116,7 +136,14 @@ class SessionDashboard(QFrame):
         layout.addWidget(notice)
 
     def start_session(self) -> None:
+        if not self._input_ready:
+            QMessageBox.warning(self, "Input required", "Load a portrait before starting a test session.")
+            return
+        if self._frame_provider is None or self._frame_provider() is None:
+            QMessageBox.warning(self, "Input unavailable", "The current preview frame could not be analyzed.")
+            return
         input_name = self.property("input_name") or "local-test-input"
+        self._analyzer.reset()
         self._session = TestSession(input_name=str(input_name))
         self._session.start()
         self._engine = ChallengeEngine(default_sequence())
@@ -166,7 +193,22 @@ class SessionDashboard(QFrame):
                     f"{result.response_seconds:.2f}s; confidence {result.confidence:.0%}"
                 ),
             )
-        )
+        )        if self._frame_provider is not None:
+            frame = self._frame_provider()
+            if frame is not None:
+                metrics = self._analyzer.analyze(frame)
+                self._session.add_signal(
+                    SignalResult(
+                        name="frame:duplicate",
+                        score=metrics.duplicate_score,
+                        detail=(
+                            f"Duplicate-frame heuristic {metrics.duplicate_score:.0%}; "
+                            f"motion {metrics.motion_score:.0%}; "
+                            f"brightness {metrics.brightness:.0%}; "
+                            f"sharpness {metrics.sharpness:.0%}"
+                        ),
+                    )
+                )
         row = self._engine.current_index - 1
         marker = "✓" if result.passed else "✕"
         item = self.queue.item(row)
@@ -184,6 +226,7 @@ class SessionDashboard(QFrame):
         self.challenge_label.setText("Session cancelled by operator.")
         self._set_running_controls(False)
         self.export_button.setEnabled(True)
+        self._update_start_state()
         self._persist_session()
         self.session_changed.emit(self._session)
 
@@ -200,6 +243,7 @@ class SessionDashboard(QFrame):
         self.progress.setValue(100)
         self._set_running_controls(False)
         self.export_button.setEnabled(True)
+        self._update_start_state()
         self._persist_session()
         self.session_changed.emit(self._session)
 
