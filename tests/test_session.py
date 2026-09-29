@@ -4,14 +4,37 @@ from app.core.session import SessionStatus, SignalResult, TestSession
 def test_session_lifecycle_and_score() -> None:
     session = TestSession("portrait.png")
     session.start()
-    session.add_signal(SignalResult("duplicate_frames", 0.8, "Repeated frames detected"))
-    session.add_signal(SignalResult("low_motion", 0.6, "Motion below expected range"))
+    session.add_signal(SignalResult("challenge:blink", 0.8, "Challenge failed"))
+    session.add_signal(SignalResult("frame:duplicate", 0.6, "Repeated frame heuristic"))
+    session.add_signal(SignalResult("frame:quality", 1.0, "Poor image quality"))
     session.complete()
 
     assert session.status is SessionStatus.COMPLETED
     assert session.risk_score() == 0.7
     assert session.classification() == "review recommended"
+    assert session.risk_breakdown() == {
+        "challenge_outcomes": 0.8,
+        "frame_continuity": 0.6,
+        "overall": 0.7,
+    }
     assert session.to_dict()["status"] == "completed"
+    assert session.to_dict()["risk_breakdown"] == {
+        "challenge_outcomes": 0.8,
+        "frame_continuity": 0.6,
+        "overall": 0.7,
+    }
+
+
+def test_quality_signal_does_not_change_anomaly_score() -> None:
+    session = TestSession("portrait.png")
+    session.start()
+    session.add_signal(SignalResult("challenge:smile", 0.0, "Challenge passed"))
+    session.add_signal(SignalResult("frame:duplicate", 0.0, "No duplicate detected"))
+    session.add_signal(SignalResult("frame:quality", 1.0, "Quality concern"))
+    session.complete()
+
+    assert session.risk_score() == 0.0
+    assert session.risk_breakdown()["overall"] == 0.0
 
 
 def test_signal_score_is_clamped() -> None:
