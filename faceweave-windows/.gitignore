@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.onnx
+*.npy
+*.exe
+build/
+dist/
+*.spec
+*.log
+.DS_Store
